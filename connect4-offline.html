@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Connect 4 — Pass & Play</title>
+<style>
+  :root {
+    --p1: #ff4d5e; --p1-dark: #b2202f;
+    --p2: #ffd23f; --p2-dark: #cf9c0a;
+    --board-blue: #2f6fd8; --board-dark: #1d4fa8;
+    --text: #2a2540; --muted: #6c6484;
+    --card: #ffffff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-touch-callout: none; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: linear-gradient(160deg, #fff6d5 0%, #ffe0ec 55%, #e3ecff 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 14px 40px;
+  }
+  h1 {
+    font-size: 1.7rem; margin: 4px 0 2px; text-align: center;
+    color: var(--board-dark);
+    text-shadow: 2px 2px 0 rgba(255,255,255,0.6);
+  }
+  p.tagline { color: var(--muted); font-size: 0.9rem; margin: 0 0 16px; text-align: center; }
+
+  .screen { display: none; width: 100%; max-width: 720px; flex-direction: column; align-items: center; }
+  .screen.active { display: flex; }
+
+  .card {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 22px;
+    box-shadow: 0 10px 0 rgba(0,0,0,0.08), 0 14px 30px rgba(0,0,0,0.12);
+    width: 100%;
+    max-width: 420px;
+  }
+  label { display: block; font-weight: 800; font-size: 0.85rem; margin: 14px 0 6px; color: var(--muted); }
+  label:first-of-type { margin-top: 0; }
+  input[type=text] {
+    width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 3px solid #eee1c9; font-size: 1rem; font-weight: 700;
+    background: #fffdf7; color: var(--text);
+  }
+  input[type=text]:focus { outline: none; border-color: var(--board-blue); }
+
+  .player-tag { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+  .dot.p1 { background: var(--p1); border: 2px solid var(--p1-dark); }
+  .dot.p2 { background: var(--p2); border: 2px solid var(--p2-dark); }
+
+  button {
+    font-family: inherit; font-weight: 800; font-size: 1rem;
+    border: none; border-radius: 14px; padding: 14px 20px;
+    cursor: pointer; width: 100%; margin-top: 20px;
+    background: var(--board-blue); color: #fff;
+    box-shadow: 0 6px 0 var(--board-dark);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--board-dark); }
+  button.secondary {
+    background: #fff; color: var(--board-dark);
+    box-shadow: 0 6px 0 #d8dde8; border: 2px solid #d8dde8;
+  }
+  button.secondary:active { box-shadow: 0 2px 0 #d8dde8; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .btn-row { display: flex; gap: 10px; }
+  .btn-row button { margin-top: 12px; }
+
+  .turn-banner {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-weight: 800; font-size: 1.05rem;
+    background: var(--card); border-radius: 16px;
+    padding: 12px 20px; margin-bottom: 14px;
+    box-shadow: 0 6px 0 rgba(0,0,0,0.06), 0 8px 18px rgba(0,0,0,0.08);
+    transition: background 0.25s ease;
+  }
+  .turn-banner .dot { width: 20px; height: 20px; }
+
+  .scoreboard {
+    display: flex; justify-content: space-between; width: 100%; max-width: 500px;
+    margin-bottom: 12px; font-size: 0.85rem; font-weight: 800; color: var(--muted);
+  }
+  .scoreboard span.count { color: var(--text); font-size: 1rem; margin-left: 4px; }
+
+  .board-wrap { width: 100%; max-width: 500px; position: relative; touch-action: none; }
+  canvas { width: 100%; height: auto; display: block; cursor: pointer; }
+
+  .win-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(30,20,50,0.55);
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .win-overlay.active { display: flex; }
+  .win-card {
+    background: var(--card); border-radius: 22px; padding: 28px 26px;
+    text-align: center; max-width: 340px; width: 100%;
+    box-shadow: 0 16px 0 rgba(0,0,0,0.1), 0 20px 40px rgba(0,0,0,0.25);
+    animation: pop-in 0.35s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes pop-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .win-card h2 { font-size: 1.4rem; margin: 6px 0 4px; }
+  .win-card p { color: var(--muted); margin: 0 0 6px; font-size: 0.9rem; }
+
+  a.help-fab {
+    position: fixed; top: 14px; right: 14px; z-index: 30;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #fff; color: var(--board-dark);
+    display: flex; align-items: center; justify-content: center;
+    text-decoration: none; font-size: 1.1rem; font-weight: 800;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.1), 0 6px 14px rgba(0,0,0,0.12);
+  }
+</style>
+</head>
+<body>
+
+<a class="help-fab" href="connect4-help.html" target="_blank" rel="noopener" aria-label="How to play">?</a>
+
+<h1>🔴🟡 Connect 4</h1>
+<p class="tagline">Pass & play — same device, two players.</p>
+
+<!-- SETUP -->
+<div id="screen-setup" class="screen active">
+  <div class="card">
+    <label>Player 1 (Red)</label>
+    <input type="text" id="p1NameInput" placeholder="Player 1" maxlength="16">
+    <label>Player 2 (Yellow)</label>
+    <input type="text" id="p2NameInput" placeholder="Player 2" maxlength="16">
+    <button onclick="startMatch()">Start Match</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div class="scoreboard">
+    <div><span class="dot p1" style="display:inline-block;vertical-align:middle;"></span> <span id="p1ScoreName"></span>: <span class="count" id="p1Score">0</span></div>
+    <div>Draws: <span class="count" id="drawScore">0</span></div>
+    <div><span id="p2ScoreName"></span> <span class="dot p2" style="display:inline-block;vertical-align:middle;"></span>: <span class="count" id="p2Score">0</span></div>
+  </div>
+  <div class="turn-banner" id="turnBanner">-</div>
+  <div class="board-wrap">
+    <canvas id="board" width="664" height="652"></canvas>
+  </div>
+  <div class="btn-row" style="width:100%; max-width:500px;">
+    <button class="secondary" onclick="resetMatch()">🔁 New Match</button>
+  </div>
+</div>
+
+<!-- WIN / DRAW OVERLAY -->
+<div id="winOverlay" class="win-overlay">
+  <div class="win-card">
+    <h2 id="winTitle">-</h2>
+    <p id="winSub"></p>
+    <button onclick="nextRound()">Play Again</button>
+    <button class="secondary" onclick="resetMatch()">New Match</button>
+  </div>
+</div>
+
+<script>
+// ---------- CONFIG ----------
+const COLS = 7, ROWS = 6, CELL = 88;
+const PAD_X = 24, PAD_TOP = 100, PAD_BOTTOM = 24;
+const BOARD_LEFT = PAD_X, BOARD_TOP = PAD_TOP;
+const COIN_R = 38, HOLE_R = 40;
+const CANVAS_W = COLS * CELL + PAD_X * 2;
+const CANVAS_H = PAD_TOP + ROWS * CELL + PAD_BOTTOM;
+
+const COLORS = {
+  1: { fill: "#ff4d5e", dark: "#b2202f" },
+  2: { fill: "#ffd23f", dark: "#cf9c0a" }
+};
+
+function colCenterX(col) { return BOARD_LEFT + col * CELL + CELL / 2; }
+function rowCenterY(row) { return BOARD_TOP + row * CELL + CELL / 2; }
+
+// ---------- STATE ----------
+let players = { 1: "Player 1", 2: "Player 2" };
+let scores = { 1: 0, 2: 0, draw: 0 };
+let board = []; // board[row][col] = 0 (empty), 1, or 2
+let settled = []; // { row, col, player } for coins that have finished falling
+let currentPlayer = 1;
+let startingPlayer = 1; // alternates each round
+let isAnimating = false;
+let activeDrop = null; // { col, row, player, startY, targetY, startTime, duration }
+let hoverCol = -1;
+let shakeCol = -1, shakeStart = 0;
+let winCells = null;
+let confetti = [];
+let gameOver = false;
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+
+// Offscreen canvas for the board frame — drawn against a blank buffer so its punched-out
+// holes are genuinely transparent, then stamped on top of the coins each frame. This is
+// what makes coins actually visible through the holes, rather than being erased by them.
+const frameCanvas = document.createElement("canvas");
+frameCanvas.width = CANVAS_W;
+frameCanvas.height = CANVAS_H;
+const fctx = frameCanvas.getContext("2d");
+
+function renderFrameLayer(shakeOffset) {
+  fctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  fctx.save();
+  fctx.fillStyle = "#2f6fd8";
+  roundRect(fctx, BOARD_LEFT - 14, BOARD_TOP - 14, COLS * CELL + 28, ROWS * CELL + 28, 22);
+  fctx.fill();
+  fctx.lineWidth = 6;
+  fctx.strokeStyle = "#1d4fa8";
+  fctx.stroke();
+
+  fctx.globalCompositeOperation = "destination-out";
+  for (let c = 0; c < COLS; c++) {
+    let cx = colCenterX(c);
+    if (c === shakeCol) cx += shakeOffset;
+    for (let r = 0; r < ROWS; r++) {
+      fctx.beginPath();
+      fctx.arc(cx, rowCenterY(r), HOLE_R, 0, Math.PI * 2);
+      fctx.fill();
+    }
+  }
+  fctx.restore();
+}
+
+function newBoardArray() {
+  const b = [];
+  for (let r = 0; r < ROWS; r++) b.push(new Array(COLS).fill(0));
+  return b;
+}
+
+// ---------- SCREENS ----------
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+function startMatch() {
+  const p1 = document.getElementById("p1NameInput").value.trim();
+  const p2 = document.getElementById("p2NameInput").value.trim();
+  players[1] = p1 || "Player 1";
+  players[2] = p2 || "Player 2";
+  scores = { 1: 0, 2: 0, draw: 0 };
+  startingPlayer = 1;
+  document.getElementById("p1ScoreName").textContent = players[1];
+  document.getElementById("p2ScoreName").textContent = players[2];
+  updateScoreboard();
+  showScreen("screen-game");
+  beginRound();
+}
+
+function resetMatch() {
+  document.getElementById("winOverlay").classList.remove("active");
+  showScreen("screen-setup");
+}
+
+function updateScoreboard() {
+  document.getElementById("p1Score").textContent = scores[1];
+  document.getElementById("p2Score").textContent = scores[2];
+  document.getElementById("drawScore").textContent = scores.draw;
+}
+
+function beginRound() {
+  board = newBoardArray();
+  settled = [];
+  winCells = null;
+  confetti = [];
+  gameOver = false;
+  isAnimating = false;
+  activeDrop = null;
+  currentPlayer = startingPlayer;
+  updateTurnBanner();
+  draw();
+}
+
+function nextRound() {
+  document.getElementById("winOverlay").classList.remove("active");
+  startingPlayer = startingPlayer === 1 ? 2 : 1; // alternate who drops first each round
+  beginRound();
+}
+
+function updateTurnBanner() {
+  const banner = document.getElementById("turnBanner");
+  const color = COLORS[currentPlayer];
+  banner.innerHTML = `<span class="dot" style="background:${color.fill}; border:2px solid ${color.dark};"></span> ${escapeHtml(players[currentPlayer])}'s turn`;
+}
+function escapeHtml(str) { const d = document.createElement("div"); d.textContent = str; return d.innerHTML; }
+
+// ---------- GAME LOGIC (deterministic — independent of animation) ----------
+function lowestEmptyRow(col) {
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r][col] === 0) return r;
+  }
+  return -1;
+}
+
+const WIN_DIRECTIONS = [{ dr: 0, dc: 1 }, { dr: 1, dc: 0 }, { dr: 1, dc: 1 }, { dr: 1, dc: -1 }];
+
+function checkWin(row, col, player) {
+  for (const { dr, dc } of WIN_DIRECTIONS) {
+    const cells = [[row, col]];
+    let r = row + dr, c = col + dc;
+    while (r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c] === player) { cells.push([r, c]); r += dr; c += dc; }
+    r = row - dr; c = col - dc;
+    while (r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c] === player) { cells.push([r, c]); r -= dr; c -= dc; }
+    if (cells.length >= 4) return cells;
+  }
+  return null;
+}
+
+function isBoardFull() {
+  return board[0].every(cell => cell !== 0);
+}
+
+// ---------- EASING (standard "ball dropped and bounced to a stop" curve) ----------
+function easeOutBounce(t) {
+  const n1 = 7.5625, d1 = 2.75;
+  if (t < 1 / d1) return n1 * t * t;
+  if (t < 2 / d1) { t -= 1.5 / d1; return n1 * t * t + 0.75; }
+  if (t < 2.5 / d1) { t -= 2.25 / d1; return n1 * t * t + 0.9375; }
+  t -= 2.625 / d1; return n1 * t * t + 0.984375;
+}
+
+// ---------- INPUT ----------
+function colFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CANVAS_W / rect.width;
+  const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  const x = (clientX - rect.left) * scaleX;
+  const col = Math.floor((x - BOARD_LEFT) / CELL);
+  return (col >= 0 && col < COLS) ? col : -1;
+}
+
+canvas.addEventListener("mousemove", (e) => {
+  hoverCol = colFromEvent(e);
+});
+canvas.addEventListener("mouseleave", () => { hoverCol = -1; });
+canvas.addEventListener("click", (e) => { attemptDrop(colFromEvent(e)); });
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  attemptDrop(colFromEvent(e));
+}, { passive: false });
+
+function attemptDrop(col) {
+  if (col < 0 || isAnimating || gameOver) return;
+  const row = lowestEmptyRow(col);
+  if (row === -1) {
+    shakeCol = col; shakeStart = performance.now();
+    return;
+  }
+  board[row][col] = currentPlayer;
+  const fallRows = row - (-1); // falling from above the board (row -1 equivalent) down to target row
+  const duration = 550 + fallRows * 95;
+  activeDrop = {
+    col, row, player: currentPlayer,
+    startY: 40, targetY: rowCenterY(row),
+    startTime: performance.now(), duration
+  };
+  isAnimating = true;
+}
+
+function onDropSettled() {
+  const { row, col, player } = activeDrop;
+  settled.push({ row, col, player });
+  activeDrop = null;
+  isAnimating = false;
+
+  const win = checkWin(row, col, player);
+  if (win) {
+    winCells = win;
+    gameOver = true;
+    scores[player]++;
+    updateScoreboard();
+    spawnConfetti(colCenterX(col), rowCenterY(row));
+    setTimeout(() => showWin(`${players[player]} Wins! 🎉`, "Four in a row!"), 3200);
+    return;
+  }
+  if (isBoardFull()) {
+    gameOver = true;
+    scores.draw++;
+    updateScoreboard();
+    setTimeout(() => showWin("It's a Draw!", "The board is completely full."), 1600);
+    return;
+  }
+  currentPlayer = currentPlayer === 1 ? 2 : 1;
+  updateTurnBanner();
+}
+
+function showWin(title, sub) {
+  document.getElementById("winTitle").textContent = title;
+  document.getElementById("winSub").textContent = sub;
+  document.getElementById("winOverlay").classList.add("active");
+}
+
+// ---------- CONFETTI ----------
+function spawnConfetti(x, y) {
+  const colors = ["#ff4d5e", "#ffd23f", "#4fc3f7", "#7ee787", "#c792ff"];
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 6;
+    confetti.push({
+      x, y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 4,
+      size: 5 + Math.random() * 5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      life: 1
+    });
+  }
+}
+function updateConfetti() {
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const p = confetti[i];
+    p.vy += 0.18;
+    p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+    p.life -= 0.006;
+    if (p.life <= 0) confetti.splice(i, 1);
+  }
+}
+
+// ---------- RENDER ----------
+function drawCoin(x, y, player, scale) {
+  scale = scale || 1;
+  const c = COLORS[player];
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  // shadow
+  ctx.beginPath();
+  ctx.ellipse(2, 4, COIN_R * 0.95, COIN_R * 0.95, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.fill();
+  // body
+  ctx.beginPath();
+  ctx.arc(0, 0, COIN_R, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = c.dark;
+  ctx.stroke();
+  // glossy highlight
+  ctx.beginPath();
+  ctx.ellipse(-COIN_R * 0.32, -COIN_R * 0.35, COIN_R * 0.32, COIN_R * 0.18, -0.5, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // hover preview (desktop only — mouse hover)
+  if (hoverCol >= 0 && !isAnimating && !gameOver && lowestEmptyRow(hoverCol) !== -1) {
+    ctx.globalAlpha = 0.45;
+    drawCoin(colCenterX(hoverCol), 40, currentPlayer);
+    ctx.globalAlpha = 1;
+  }
+
+  // settled coins
+  settled.forEach(s => {
+    const isWinning = winCells && winCells.some(([r, c]) => r === s.row && c === s.col);
+    let y = rowCenterY(s.row);
+    let scale = 1;
+    if (isWinning) {
+      const pulse = 1 + Math.sin(performance.now() / 160) * 0.08;
+      scale = pulse;
+    }
+    drawCoin(colCenterX(s.col), y, s.player, scale);
+  });
+
+  // actively falling coin
+  if (activeDrop) {
+    const t = Math.min(1, (performance.now() - activeDrop.startTime) / activeDrop.duration);
+    const eased = easeOutBounce(t);
+    const y = activeDrop.startY + (activeDrop.targetY - activeDrop.startY) * eased;
+    drawCoin(colCenterX(activeDrop.col), y, activeDrop.player);
+    if (t >= 1) onDropSettled();
+  }
+
+  // board frame with punched-out holes — rendered on its own offscreen canvas (so the
+  // holes are genuinely transparent within that image) then stamped on top of the coins,
+  // rather than punched directly into the main canvas after the coins are already drawn.
+  let shakeOffset = 0;
+  if (shakeCol >= 0) {
+    const age = performance.now() - shakeStart;
+    if (age < 300) {
+      shakeOffset = Math.sin(age / 22) * 6 * (1 - age / 300);
+    } else {
+      shakeCol = -1;
+    }
+  }
+  renderFrameLayer(shakeOffset);
+  ctx.drawImage(frameCanvas, 0, 0);
+
+  // confetti (drawn on top of everything)
+  confetti.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+    ctx.restore();
+  });
+  updateConfetti();
+
+  requestAnimationFrame(draw);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
